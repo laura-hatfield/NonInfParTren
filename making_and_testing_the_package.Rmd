@@ -23,7 +23,6 @@ devtools::load_all("Functions/NonInfParTren")
 
 ```
 
-
 To incorporate the fast matrix multiplication in C++, I used `RcppEigen`, which has a `package.skeleton` function that sets up the infrastructure for the package. 
 I believe the only `fixest` (for model fitting) and `collapse` (for fast subsettting) are the remaining package dependencies.
 

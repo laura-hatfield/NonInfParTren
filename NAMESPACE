@@ -1,3 +1,5 @@
 useDynLib(NonInfParTren)
-importFrom(Rcpp, evalCpp)
+import(ggplot2)
+importFrom(Rcpp,evalCpp,fixest,collapse)
 export("run_NI_test")
+

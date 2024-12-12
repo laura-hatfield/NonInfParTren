@@ -1,11 +1,17 @@
 Package: NonInfParTren
 Type: Package
-Title: Implements the non-inferiority testing for reduced and expanded model, as described in Bilinski and Hatfield (2025)
+Title: Test Reduced vs Expanded Model Coefficient Linear Combinations
 Version: 1.0
 Date: 2024-12-06
-Author: Alyssa Bilinski
-Maintainer: Laura Hatfield <hatfield-laura@norc.org>
-Description: Fits two models and tests a linear combination of parameters from the fitted models using seemingly unrelated regression methods to account for the covariance between models.
-License: GPLv3
-Imports: Rcpp (>= 1.0.11)
+Authors@R: 
+  c(person("Alyssa", "Bilinski", email = "alyssa\_bilinski@brown.edu", role = c("aut"),
+           comment = c(ORCID = "XXX")),
+    person("Laura", "Hatfield", email = "hatfield-laura@norc.org", role = c("aut"),
+           comment = c(ORCID = "0000-0003-0366-3929")))
+Description: Fits reduced and expanded linear models and tests the difference of a linear combination of parameters from the fitted models using seemingly unrelated regression methods to account for the covariance between models, as described in "Nothing to See Here: A non-inferiority approach to parallel trends" by Alyssa Bilinski and Laura Hatfield.
+License: GPL (3)
+Imports: 
+  Rcpp (>= 1.0.11), 
+  fixest, 
+  collapse
 LinkingTo: Rcpp, RcppEigen
