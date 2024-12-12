@@ -16,3 +16,5 @@ Imports:
   collapse,
   ggplot2
 LinkingTo: Rcpp, RcppEigen
+URL: https://github.com/laura-hatfield/NonInfParTren
+BugReports: https://github.com/laura-hatfield/NonInfParTren/issues
