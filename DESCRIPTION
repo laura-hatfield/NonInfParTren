@@ -13,5 +13,6 @@ License: GPL (3)
 Imports: 
   Rcpp (>= 1.0.11), 
   fixest, 
-  collapse
+  collapse,
+  ggplot2
 LinkingTo: Rcpp, RcppEigen
