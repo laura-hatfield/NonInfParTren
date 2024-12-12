@@ -1,5 +1,7 @@
 useDynLib(NonInfParTren)
 import(ggplot2)
-importFrom(Rcpp,evalCpp,fixest,collapse)
+importFrom(Rcpp,evalCpp)
+importFrom(fixest,feols)
+importFrom(collapse,fsubset)
 export("run_NI_test")
 

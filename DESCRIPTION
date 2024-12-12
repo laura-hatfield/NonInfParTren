@@ -18,3 +18,4 @@ Imports:
 LinkingTo: Rcpp, RcppEigen
 URL: https://github.com/laura-hatfield/NonInfParTren
 BugReports: https://github.com/laura-hatfield/NonInfParTren/issues
+RoxygenNote: 7.3.2

@@ -1,13 +1,63 @@
+#' Fit reduced and expanded models
+#' @title Fit reduced and expanded models
+#' @description
+#' `run_NI_test()` fits the reduced and expanded models to the data, computes linear combinations of their coefficients, and tests the difference
+#' 
+#' @param data Data frame containing all the variables in the reduced and expanded models, the cluster variable (if any), and the weight variable (if any).
+#' @param reduced Formula object giving the reduced model form. 
+#' @param expanded Formula object giving the expanded model form. 
+#' @param lincom_var Character containing a string found (only!) in the variables that will be average together. 
+#' @param robust Logical indicating whether to use heteroskedasticity-robust standard errors. Default is `TRUE`.
+#' @param cluster Character containing the name of the cluster variable in the data OR logical FALSE indicating no clustering. Default is `FALSE`.
+#' @param weight Character containing the name of the weight variable in the data OR logical FALSE indicating no weights. Default is `FALSE`.
+#' @param null_reduced Logical indicating whether to use the reduced model's residuals in the covariance calculations. Default is `FALSE`; see Appendix B of Bilinski and Hatfield Stat Med (2025) for more detail.
+#' @param alpha Numerical value of the type I error rate to use in constructing confidence intervals. Default is 0.05.
+#' 
+#' @returns 
+#' A list containing the treatment effects in the reduced and expanded models, their standard errors, the difference between them, and the uncertainty of the difference (both the standard error and a 1-alpha/2 confidence interval). 
+#' \describe{
+#'  \item{diff}{Reduced model linear combination minus expanded model linear combination.}
+#'  \item{se}{Standard error of this difference.}
+#'  \item{CI}{1-alpha/2 confidence interval around the difference.}
+#'  \item{tx_r}{Linear combination of estimated coefficients from the reduced model.}
+#'  \item{tx_e}{Linear combination of estimated coefficients from the expanded model.}
+#'  \item{v_r}{Variance of the linear combination from the reduced model.}
+#'  \item{v_e]{Variance of the linear combination from the expanded model.} 
+#'  \item{cov_lincom}{Covariance between the two linear combinations.}
+#' }
+#' 
+#' @details
+#' Both models must contain at least one variable with `lincom_var` in the name, but there are otherwise no required to have any relationship to the reduced model. A helpful way of adding parameters to your model is to construct them using `update.formula()`, for example, `expanded = update.formula(reduced_model,"~. + treat:year")`
+#' Note that this means you should create your own interaction variable in the data if your treatment effects are interaction terms. For instance, if you have variables `post.month` and `treat`, create a variable in the data called `post.by.treat` rather than using a `post.month:treat` interaction term in your model formulas.
+#' The linear combination is simply the average of all the coefficients corresponding to `lincom_var` in each model.
+#' 
+#' @seealso [formula], [update.formula]
+#' 
+#' @examples
+#' data("depcov")
+#' 
+#' # Reduced model is described in Bilinski and Hatfield
+#' # it omits the unemployment control variable from Ankosa-Antwi et al.
+#' 
+#' red.mod <- as.formula(paste(instype[k],"~",paste(c("fipstate","factor(trend)",
+#'   "enact.trt.month","impl.trt.month", # these are treat.by.post
+#'   "female","hispanic","white", "asian", "other",
+#'   "mar", "student","fpl_ratio","fpl_ratio_2",paste0("age",c(17:25,27:29))),collapse="+")))
+#'   
+#' # Expanded model adds treatment-group specific linear time trend
+#' exp.mod <- update.formula(red.mod,"~ . + fedelig:trend")
+#' 
+#' # Fit both using robust standard errors, clustering, and weights
+#'   grp.lin.yr <- run_NI_test(data=depcov,reduced = red.mod,expanded=exp.mod,lincom_var = 'impl.trt',cluster = 'fipstate',weight = 'weight')
+#'
+#' # Show the difference and CI
+#' grp.lin.yr$diff
+#' grp.lin.yr$CI   
+
 #### RUN NON-INFERIORITY TESTS ####
-run_NI_test = function(data, 
-                       reduced, # formula for the reduced model
-                       expanded, # formula for the expanded model 
-                       lincom_var, # string found (only) in the name(s) of the treatment variable(s)
-                       robust = T, # use heteroskedasticity-robust SEs?
-                       cluster = F, # string of the cluster variable in data
-                       weight = F, # string of the weight variable in the data
-                       null_reduced = F, # use the reduced model residuals? 
-                       alpha = .05){
+run_NI_test = function(data, reduced, expanded, lincom_var, 
+                       robust = TRUE, cluster = FALSE, weight = FALSE, 
+                       null_reduced = FALSE, alpha = .05){
   ## Check that both models have the named treatment variable:
   stopifnot("Reduced and expanded models must both contain `lincom_var`."=
               any(grepl(lincom_var,reduced))&any(grepl(lincom_var,expanded)))
@@ -17,10 +67,10 @@ run_NI_test = function(data,
   # Check that cluster is in the data (or set to FALSE)
   stopifnot("`cluster` must either name a variable in the dataset or be set to FALSE."=
               ifelse(is.character(cluster),any(grepl(cluster,names(data))),TRUE))
-            
+  
   ## If weight is FALSE, set all equal
   if(!is.character(weight)) data$weight = 1
-
+  
   ## Set cluster variable name to cluster
   if(is.character(cluster)) data$cluster = data[,cluster]
   
@@ -112,16 +162,17 @@ run_NI_test = function(data,
   vec_lincom_r = matrix(0, length(coeff_r), 1)
   comvars_r <- grep(lincom_var,names(coeff_r))
   vec_lincom_r[comvars_r,] = 1/length(comvars_r)
+  tx_r = sum(coeff_r*vec_lincom_r)
+  
   vec_lincom_e = matrix(0, length(coeff_e), 1)
   comvars_e <- grep(lincom_var,names(coeff_e))
   vec_lincom_e[comvars_e,] = 1/length(comvars_e)
-  
-  # calculate difference between reduced and expanded model lienar combinations
-  tx_r = sum(coeff_r*vec_lincom_r)
   tx_e = sum(coeff_e*vec_lincom_e)
+  
+  # calculate difference between reduced and expanded model linear combinations
   diff = tx_r - tx_e
   
-  # calculate standard error
+  # calculate standard errors
   v_r = eigenMapMatMult(eigenMapMatMult(t(vec_lincom_r), vcov_r),vec_lincom_r)
   v_e = eigenMapMatMult(eigenMapMatMult(t(vec_lincom_e),vcov_e),vec_lincom_e)
   cov_lincom = eigenMapMatMult(eigenMapMatMult(t(vec_lincom_r),cov), vec_lincom_e)
@@ -130,17 +181,13 @@ run_NI_test = function(data,
   
   # statistical significance
   CI = c(diff - se*qnorm(1-alpha/2), diff + se*qnorm(1-alpha/2))
-  tval_r = tx_r/sqrt(v_r)
-  tval_e = tx_e/sqrt(v_e)
   
-    return(list('diff'=diff, 
-                'se'=se, 
-                'CI'=CI, 
-                'tx_r'=tx_r, 
-                'tx_e'=tx_e, 
-                'v_r'=v_r, 
-                'v_e'=v_e, 
-                'tval_r'=tval_r, 
-                'tval_e'=tval_e,
-                'cov_lincom'=cov_lincom))
+  return(list('diff'=diff, 
+              'se'=se, 
+              'CI'=CI, 
+              'tx_r'=tx_r, 
+              'tx_e'=tx_e, 
+              'v_r'=v_r, 
+              'v_e'=v_e, 
+              'cov_lincom'=cov_lincom))
 }
