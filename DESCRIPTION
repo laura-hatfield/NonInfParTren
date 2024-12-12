@@ -1,0 +1,11 @@
+Package: NonInfParTren
+Type: Package
+Title: Implements the non-inferiority testing for reduced and expanded model, as described in Bilinski and Hatfield (2025)
+Version: 1.0
+Date: 2024-12-06
+Author: Alyssa Bilinski
+Maintainer: Laura Hatfield <hatfield-laura@norc.org>
+Description: Fits two models and tests a linear combination of parameters from the fitted models using seemingly unrelated regression methods to account for the covariance between models.
+License: GPLv3
+Imports: Rcpp (>= 1.0.11)
+LinkingTo: Rcpp, RcppEigen

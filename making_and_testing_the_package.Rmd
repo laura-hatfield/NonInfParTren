@@ -1,0 +1,214 @@
+---
+title: "R package to implement the methods described in 'Nothing To See Here: A non-inferiority approach to parallel trends' by Alyssa Bilinski and Laura A.~Hatfield"
+author: "Laura A.~Hatfield"
+date: "2024-12-12"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(ggplot2)
+library(tidyverse)
+theme_set(theme_minimal())
+
+## Preliminaries only done once to get the skeleton of the package set up:
+#library(RcppEigen)
+#RcppEigen.package.skeleton(name="NonInfParTren",code_file="non-inf_tests.R")
+#Rcpp::compileAttributes("NonInfParTren") # run to get it to do the exports after the cpp file is updated
+
+# Load the baby package and its functions
+devtools::load_all("Functions/NonInfParTren")
+
+```
+
+
+To incorporate the fast matrix multiplication in C++, I used `RcppEigen`, which has a `package.skeleton` function that sets up the infrastructure for the package. 
+I believe the only `fixest` (for model fitting) and `collapse` (for fast subsettting) are the remaining package dependencies.
+
+## Data for testing and vignettes
+
+To get started, I used a dataset distributed in the `did` package, which is county-year observations of teen unemployment and state minimum wage changes from 2003-2007.
+Since several happened in 2006, I limit the data to only those states (and the never-treated) so we have a common adoption time.
+
+```{r load_emp_data, echo=FALSE}
+## Some tidy little data -- these are county-level teen unemployment data used in Callaway and Sant'Anna (2021)
+# The dataset contains 500 observations of county-level teen employment rates from 2003-2007. Some states are first treated in 2004, some in 2006, and some in 2007 (see the paper for more details). The important variables in the dataset are
+# lemp :  This is the log of county-level teen employment. It is the outcome variable
+# first.treat :  This is the period when a state first increases its minimum wage. It can be 2004, 2006, or 2007. It is the variable that defines group in this application
+# year :  This is the year and is the time variable
+# countyreal : This is an id number for each county and provides the individual identifier in this panel data context
+
+mpdta <- did::mpdta
+# Limit to counties treated in 2006
+mpdta <- mpdta[mpdta$first.treat%in%c(0,2006),]
+mpdta$post <- ifelse(mpdta$year>=2006,1,0)
+mpdta$trtpostyr <- mpdta$treat*mpdta$post*(mpdta$year-2006+1)
+```
+
+I want a discrete covariate to demonstrate the covariate-specific linear trends model, so I dichotomize the log population to get a binary indicator of "big" counties. 
+I also subtract log population off the log teen unemployment to get a log ratio, otherwise, the two are highly correlated.
+
+```{r plot_emp_dat}
+# Can I use lpop as my covariate for showing covariate-specific time trends?
+# Not really, because teen employment rates are so strongly correlated with it.
+# Normalize teen employment first?
+
+#ggplot(mpdta,aes(x=lemp-lpop,y=lpop)) + geom_point()
+#ggplot(mpdta,aes(y=lpop)) + geom_histogram()
+
+mpdta$outcome <- mpdta$lemp - mpdta$lpop
+# Make a categorical version of population
+mpdta$large <- ifelse(mpdta$lpop>3,1,0)
+mpdta$unit <- factor(mpdta$countyreal)
+```
+
+I fit a base model with year and county fixed effects plus the interaction term for treated post-period observations. 
+The expanded models add a treatment-group-specific linear trend, a linear trend for large counties, unit-specific linear trends,
+treatment-group-specific year fixed effects, and separate year fixed effects for large counties.
+These are the five expanded models in our paper's Table 1.
+These are using heteroskedasticity-robust standard errors (the function default) and standard errors clustered at the county level (no weights).
+ 
+
+```{r fit_emp_models, eval=FALSE, include=FALSE}
+# base.model
+red.mod <- as.formula("outcome ~ factor(trtpostyr) + unit + factor(year)")
+
+# treatment group-specific linear trends
+grp.lin.yr <- run_NI_test(data=mpdta,reduced = red.mod,
+                          expanded = update.formula(red.mod,"~. + treat:year"),
+                          lincom_var = 'trtpostyr',cluster = 'unit')
+# covariate-specific linear trends
+cov.lin.yr <- run_NI_test(data=mpdta,reduced = red.mod,
+                          expanded = update.formula(red.mod,"~ . + large:year"),
+                          lincom_var = 'trtpostyr',cluster = 'unit')
+# Unit-specific linear trends
+unit.lin.yr <- run_NI_test(data=mpdta,reduced = red.mod,
+                           expanded = update.formula(red.mod,"~ . + unit:year"),
+                           lincom_var = 'trtpostyr',cluster = 'unit')
+# treatment group-specific time fixed effects
+trt.tfe <- run_NI_test(data=mpdta,reduced = red.mod,
+                       expanded = update.formula(red.mod,"~ . + treat:factor(year)"),
+                       lincom_var = 'trtpostyr',cluster = 'unit')
+# covariate-specific time fixed effects 
+cov.tfe <- run_NI_test(data=mpdta,reduced = red.mod,
+                       expanded = update.formula(red.mod,"~ . + large:factor(year)"),
+                       lincom_var = 'trtpostyr',cluster = 'unit')
+
+emp.results <- list(grp.lin.yr,cov.lin.yr,unit.lin.yr,trt.tfe,cov.tfe)
+
+save(emp.results,file="mpdta_fits.RData")
+
+```
+
+```{r plot_emp_fits}
+load("mpdta_fits.RDAta")
+
+# Collect up the results across models for plotting
+diff.out <- data.frame(diff=mapply(function(x) x$diff,emp.results),
+                       lb=mapply(function(x) x$CI[1],emp.results),
+                       ub=mapply(function(x) x$CI[2],emp.results),
+                       exp=c('Group linear','Cov linear','Unit linear','Group FE','Cov FE')) %>%
+  mutate(expanded=factor(exp,levels=c('Group linear','Cov linear','Unit linear','Group FE','Cov FE')))
+
+ggplot(diff.out,aes(x=expanded,y=diff))  + geom_point() + 
+  geom_segment(aes(x=expanded,y=lb,yend=ub)) + xlab("Expanded model") + 
+  ylab("Change in treatment effect") + geom_hline(yintercept=0)
+```
+
+## Using Akosa Antwi data
+
+Now I do the same thing for the Akosa Antwi data we used in the paper.
+I used the model specification that omits the unemployment controls, but has age, sex, race/ethnicity, and unit and month fixed effects with a treatment effect for the implementation (not enactment) period only.
+The expanded models are as above, where for an example covariate I use the indicators for the young and old controls.
+Not sure if this really makes the points we want.
+These are using heteroskedasticity-robust standard errors (the function default) and standard errors clustered at the county level with survey weights.
+ 
+
+```{r fit_dep_cov_models, eval=FALSE, include=FALSE}
+load("dependent_coverage.RData")
+# Cluster standard errors by `fipstate`
+# weights are in `weight`
+# dependent variables are 
+
+# Explanatory variables: not used "ue", "ue_treat"
+# "we consider models both with and without state-month unemployment variables in our analyses"
+# Base model fit in original paper
+
+# Loop over independent variables:
+all.results <- list()
+for (k in 1:length(instype)) {
+  base.model <- as.formula(paste(instype[k],"~",paste(c("unit","factor(trend)",
+                                                      "enact.trt.month","impl.trt.month", # these are treat.by.post
+                                                      "female","hispanic",
+                                                      "white", "asian", "other",
+                                                      "mar", "student","fpl_ratio","fpl_ratio_2",
+                                                      paste0("age",c(17,18,19,20:25,27:29))),collapse="+")))
+  # Add treatment-group specific linear trends
+  grp.lin.yr <- run_NI_test(data=dat.for.reg,reduced = base.model,
+                            expanded = update.formula(base.model,"~ . + fedelig:trend"),
+                            lincom_var = 'impl.trt',cluster = 'unit',weight = 'weight')
+  # Add comparison-group specific linear trends
+  cov.lin.yr <- run_NI_test(data=dat.for.reg,reduced = base.model,
+                            expanded = update.formula(base.model,"~ . + young.ctrl:trend + old.ctrl:trend"),
+                            lincom_var = 'impl.trt',cluster = 'unit',weight = 'weight')
+  # Add state-specific linear trends
+  unit.lin.yr <- run_NI_test(data=dat.for.reg,reduced = base.model,
+                             expanded = update.formula(base.model,"~ . + unit:trend"),
+                             lincom_var = 'impl.trt',cluster = 'unit',weight = 'weight')
+  # Add treatment-group specific time fixed effects
+  trt.tfe <- run_NI_test(data=dat.for.reg,reduced = base.model,
+                             expanded = update.formula(base.model,"~ . + fedelig:factor(trend)"),
+                             lincom_var = 'impl.trt',cluster = 'unit',weight = 'weight')
+  # Add covariate-group specific time fixed effects
+  cov.tfe <- run_NI_test(data=dat.for.reg,reduced = base.model,
+                             expanded = update.formula(base.model,"~ . + young.ctrl:factor(trend) + old.ctrl:factor(trend)"),
+                             lincom_var = 'impl.trt',cluster = 'unit',weight = 'weight')
+ all.results[[k]] <- list(grp.lin.yr,cov.lin.yr,unit.lin.yr,trt.tfe,cov.tfe)  
+}
+names(all.results) <- instype
+save(all.results,file="dep_cov_model_fits.RData")
+```
+
+Here are the estimates and confidence intervals for the difference between the expanded and reduced models' treatment effects.
+The horizontal lines indicate the non-inferiority/equivalence bounds we use in our paper's Table 4.
+I think these results replicate what have in that table for the difference between the original and '+ trend' models, which is the same as "Group linear" in these plots.
+Something doesn't look right with the "Unit linear" results; I need to think more about why this might be over-specified or something?
+
+```{r plot_dep_cov_fits}
+load("dep_cov_model_fits.RData")
+instype = c('anyhi','emphi_dep','emphi','indiv','govhi')
+inslabels = c('Any','Dependent','Employer','Individual','Government')
+
+dep.cov.diff.out <- as_tibble(data.frame(diff=sapply(all.results,function(x) mapply(function(y) y$diff,x)),
+                       lb=sapply(all.results,function(x) mapply(function(y) y$CI[1],x)),
+                       ub=sapply(all.results,function(x) mapply(function(y) y$CI[2],x)),
+                       exp=c('grp.lin.yr','cov.lin.yr','unit.lin.yr','trt.tfe','cov.tfe'))) %>%
+  pivot_longer(-exp) %>% separate(name,into=c('stat','outcome'),sep="\\.") %>% 
+  pivot_wider(names_from=stat,values_from=value) %>%
+  mutate(outcome=factor(outcome,levels=instype,labels=inslabels),
+         expanded=factor(exp,levels=c('grp.lin.yr','cov.lin.yr','unit.lin.yr','trt.tfe','cov.tfe'),
+                             labels=c('Group linear','Cov linear','Unit linear','Group FE','Cov FE')))
+
+ggplot(dep.cov.diff.out,aes(x=expanded,y=diff*100))  + geom_point() + geom_segment(aes(x=expanded,y=lb*100,yend=ub*100)) + xlab("Expanded model") + 
+  ylab("Change in treatment effect") + geom_hline(yintercept=c(-2.1,2.1),linetype=2) + 
+  geom_hline(yintercept=c(-5.3,5.3),linetype=3) + facet_wrap(~outcome) + theme(axis.text.x=element_text(angle=45,hjust=1))
+```
+
+Let's also look at the treatment effects.
+
+```{r pot_dep_cov_effs}
+dep.cov.est.out <- as_tibble(data.frame(est=sapply(all.results,function(x) mapply(function(y) y$tx_e,x)),
+                       lb=sapply(all.results,function(x) mapply(function(y) y$tx_e-sqrt(y$v_e)*qnorm(.975),x)),
+                       ub=sapply(all.results,function(x) mapply(function(y) y$tx_e+sqrt(y$v_e)*qnorm(.975),x)),
+                       exp=c('grp.lin.yr','cov.lin.yr','unit.lin.yr','trt.tfe','cov.tfe'))) %>%
+  pivot_longer(-exp) %>% separate(name,into=c('stat','outcome'),sep="\\.") %>% 
+  pivot_wider(names_from=stat,values_from=value) %>%
+  mutate(outcome=factor(outcome,levels=instype,labels=inslabels),
+         expanded=factor(exp,levels=c('grp.lin.yr','cov.lin.yr','unit.lin.yr','trt.tfe','cov.tfe'),
+                             labels=c('Group linear','Cov linear','Unit linear','Group FE','Cov FE')))
+
+ggplot(dep.cov.est.out,aes(x=expanded,y=est*100))  + geom_point() + geom_segment(aes(x=expanded,y=lb*100,yend=ub*100)) + xlab("Expanded model") + 
+  ylab("Treatment effect") + facet_wrap(~outcome) + theme(axis.text.x=element_text(angle=45,hjust=1)) + geom_hline(yintercept=0)
+```
