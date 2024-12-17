@@ -36,7 +36,17 @@ run_NI_test(
 \item{alpha}{Numerical value of the type I error rate to use in constructing confidence intervals. Default is 0.05.}
 }
 \value{
-
+A list containing the treatment effects in the reduced and expanded models, their standard errors, the difference between them, and the uncertainty of the difference (both the standard error and a 1-alpha/2 confidence interval). 
+\describe{
+ \item{diff}{Reduced model linear combination minus expanded model linear combination.}
+ \item{se}{Standard error of this difference.}
+ \item{CI}{1-alpha/2 confidence interval around the difference.}
+ \item{tx_r}{Linear combination of estimated coefficients from the reduced model.}
+ \item{tx_e}{Linear combination of estimated coefficients from the expanded model.}
+ \item{v_r}{Variance of the linear combination from the reduced model.}
+ \item{v_e}{Variance of the linear combination from the expanded model.} 
+ \item{cov_lincom}{Covariance between the two linear combinations.}
+}
 }
 \description{
 `run_NI_test()` fits the reduced and expanded models to the data, computes linear combinations of their coefficients, and tests the difference

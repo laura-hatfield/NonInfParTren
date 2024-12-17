@@ -3,7 +3,7 @@ Type: Package
 Title: Test Reduced vs Expanded Model Coefficient Linear Combinations
 Version: 1.0
 Date: 2024-12-06
-Authors@R: 
+Authors@: 
   c(person("Alyssa", "Bilinski", email = "alyssa\_bilinski@brown.edu", role = c("aut"),
            comment = c(ORCID = "XXX")),
     person("Laura", "Hatfield", email = "hatfield-laura@norc.org", role = c("aut"),

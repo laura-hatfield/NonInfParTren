@@ -22,7 +22,7 @@
 #'  \item{tx_r}{Linear combination of estimated coefficients from the reduced model.}
 #'  \item{tx_e}{Linear combination of estimated coefficients from the expanded model.}
 #'  \item{v_r}{Variance of the linear combination from the reduced model.}
-#'  \item{v_e]{Variance of the linear combination from the expanded model.} 
+#'  \item{v_e}{Variance of the linear combination from the expanded model.} 
 #'  \item{cov_lincom}{Covariance between the two linear combinations.}
 #' }
 #' 
